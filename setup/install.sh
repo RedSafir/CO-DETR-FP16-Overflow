@@ -151,11 +151,9 @@ if [ "$MMCV_INSTALLED" = false ]; then
     pip install "setuptools==69.5.1" wheel -q
     pip install -r requirements.txt -q
 
-    # Cek ketersediaan g++-12 untuk CUDA 12 host compiler compatibility
-    if command -v g++-12 &>/dev/null; then
-        export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-12"
-        log_info "Menggunakan g++-12 untuk NVCC host compiler"
-    fi
+    # Izinkan g++ 13.3.0 bawaan OS tanpa perlu install g++-12
+    export NVCC_PREPEND_FLAGS="-D__CUDA_ALLOW_UNSUPPORTED_COMPILER__ -allow-unsupported-compiler"
+    log_info "NVCC diatur untuk mengizinkan g++ 13.3.0 bawaan OS (-allow-unsupported-compiler)"
 
     MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
     cd ../Co-DETR
