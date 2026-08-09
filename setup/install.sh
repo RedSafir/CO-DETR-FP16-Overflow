@@ -149,7 +149,11 @@ if [ "$MMCV_INSTALLED" = false ]; then
     fi
     cd mmcv_src
     pip install "setuptools==69.5.1" wheel -q
-    pip install -r requirements.txt -q
+
+    # Install build dependency mmcv (file requirements bisa berbeda per versi)
+    pip install ninja -q
+    [ -f "requirements/optional.txt" ] && pip install -r requirements/optional.txt -q
+    [ -f "requirements.txt" ] && pip install -r requirements.txt -q
 
     # Izinkan g++ 13.3.0 bawaan OS tanpa perlu install g++-12
     export NVCC_PREPEND_FLAGS="-D__CUDA_ALLOW_UNSUPPORTED_COMPILER__ -allow-unsupported-compiler"
