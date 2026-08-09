@@ -54,8 +54,8 @@ source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate "$ENV_NAME"
 log_info "Environment aktif: $(conda info --envs | grep '*')"
 
-# Pastikan setuptools<80 dan wheel terinstall (setuptools >=80 menghapus pkg_resources!)
-pip install --upgrade pip "setuptools<80" wheel -q
+# Pastikan setuptools dan wheel versi kompatibel terinstall
+pip install --upgrade pip "setuptools>=77.0.3" wheel -q
 
 # ─────────────────────────────────────────────
 # 2. Install PyTorch (dengan dukungan sm_120)
@@ -146,9 +146,9 @@ if [ "$MMCV_INSTALLED" = false ]; then
         git clone https://github.com/open-mmlab/mmcv mmcv_src
     fi
     cd mmcv_src
-    pip install "setuptools<80" wheel -q
+    pip install "setuptools>=77.0.3" wheel -q
     pip install -r requirements.txt -q
-    MMCV_WITH_OPS=1 pip install --no-build-isolation -e . -v
+    MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
     cd ../Co-DETR
     MMCV_INSTALLED=true
 fi
