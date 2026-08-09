@@ -67,10 +67,12 @@ if python -c "import torch; cc=torch.cuda.get_device_capability(); exit(0 if cc>
 fi
 
 if [ "$PYTORCH_OK" = false ]; then
-    log_info "Menginstall PyTorch nightly dengan dukungan CUDA 12.8 (mendukung sm_120)..."
-    pip install --pre torch torchvision torchaudio \
-        --index-url https://download.pytorch.org/whl/nightly/cu128 \
-        --quiet
+    log_info "Menginstall PyTorch untuk CUDA 12.8 (mendukung sm_120)..."
+    # Coba versi stable cu128 / cu126 terlebih dahulu
+    if ! pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128; then
+        log_warn "Stable cu128 gagal, mencoba nightly build tanpa torchaudio..."
+        pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu128
+    fi
 fi
 
 # Verifikasi
