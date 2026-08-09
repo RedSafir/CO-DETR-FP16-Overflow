@@ -150,6 +150,13 @@ if [ "$MMCV_INSTALLED" = false ]; then
     cd mmcv_src
     pip install "setuptools==69.5.1" wheel -q
     pip install -r requirements.txt -q
+
+    # Cek ketersediaan g++-12 untuk CUDA 12 host compiler compatibility
+    if command -v g++-12 &>/dev/null; then
+        export NVCC_PREPEND_FLAGS="-ccbin /usr/bin/g++-12"
+        log_info "Menggunakan g++-12 untuk NVCC host compiler"
+    fi
+
     MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
     cd ../Co-DETR
     MMCV_INSTALLED=true
