@@ -54,15 +54,14 @@ source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate "$ENV_NAME"
 log_info "Environment aktif: $(conda info --envs | grep '*')"
 
-# Pastikan setuptools dan wheel versi kompatibel terinstall
-pip install --upgrade pip "setuptools>=77.0.3" wheel -q
+# Pastikan setuptools==69.5.1 terinstall (menyediakan pkg_resources dan kompatibel dengan openxlab)
+pip install --upgrade pip "setuptools==69.5.1" wheel -q
 
 # ─────────────────────────────────────────────
 # 2. Install PyTorch (dengan dukungan sm_120)
 # ─────────────────────────────────────────────
 log_info "=== Tahap 2: Install PyTorch untuk sm_120 ==="
 
-# Cek apakah PyTorch sudah ada dan mendukung sm_120
 PYTORCH_OK=false
 if python -c "import torch; cc=torch.cuda.get_device_capability(); exit(0 if cc>=(12,0) else 1)" 2>/dev/null; then
     log_info "PyTorch sudah ada dan mendukung sm_120."
@@ -70,8 +69,11 @@ if python -c "import torch; cc=torch.cuda.get_device_capability(); exit(0 if cc>
 fi
 
 if [ "$PYTORCH_OK" = false ]; then
-    log_info "Menginstall PyTorch dengan CUDA 13.2 index..."
-    pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu132
+    log_info "Menginstall PyTorch Stable cu128..."
+    if ! pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128; then
+        log_warn "cu128 gagal, mencoba cu124..."
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+    fi
 fi
 
 # Verifikasi
@@ -146,7 +148,7 @@ if [ "$MMCV_INSTALLED" = false ]; then
         git clone https://github.com/open-mmlab/mmcv mmcv_src
     fi
     cd mmcv_src
-    pip install "setuptools>=77.0.3" wheel -q
+    pip install "setuptools==69.5.1" wheel -q
     pip install -r requirements.txt -q
     MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
     cd ../Co-DETR
