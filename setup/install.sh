@@ -165,14 +165,11 @@ fi
 # ─────────────────────────────────────────────
 # 5. Install dependency Co-DETR
 # ─────────────────────────────────────────────
-log_info "=== Tahap 5: Install dependency Co-DETR ==="
+log_info "=== Tahap 5: Install Co-DETR Package & Dependency ==="
 
-pip install -r requirements.txt -q || log_warn "Beberapa dependency mungkin gagal — cek output di atas."
-
-# mmdetection
-if ! python -c "import mmdet" 2>/dev/null; then
-    pip install mmdet -q
-fi
+cd "$REPO_DIR"
+pip install --no-build-isolation . -q || log_warn "Install Co-DETR package warning"
+cd ..
 
 # Dependency tambahan untuk eksperimen
 pip install matplotlib pandas scipy tqdm pycocotools -q
