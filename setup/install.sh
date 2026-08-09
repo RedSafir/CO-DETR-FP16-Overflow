@@ -159,6 +159,42 @@ if [ "$MMCV_INSTALLED" = false ]; then
     export NVCC_PREPEND_FLAGS="-D__CUDA_ALLOW_UNSUPPORTED_COMPILER__ -allow-unsupported-compiler"
     log_info "NVCC diatur untuk mengizinkan g++ 13.3.0 bawaan OS (-allow-unsupported-compiler)"
 
+    # Patch PyTorch cpp_extension.py agar tidak reject g++ 13 saat CUDA 12.0
+    log_info "Patching torch cpp_extension.py untuk mengizinkan g++ 13.x..."
+    python3 - << 'PYEOF'
+import inspect, warnings, sys
+try:
+    import torch.utils.cpp_extension as ext
+    filepath = inspect.getfile(ext)
+    with open(filepath, 'r') as f:
+        content = f.read()
+
+    changed = False
+    # Pattern PyTorch 2.x
+    patterns = [
+        ("raise RuntimeError(f'The current installed version of {compiler_name}", 
+         "warnings.warn(f'The current installed version of {compiler_name}"),
+        ("raise RuntimeError(\"The current installed version of g++",
+         "pass  # patched: raise RuntimeError(\"The current installed version of g++"),
+        ("raise RuntimeError('The current installed version of g++",
+         "pass  # patched: raise RuntimeError('The current installed version of g++"),
+    ]
+    for old, new in patterns:
+        if old in content:
+            content = content.replace(old, new)
+            changed = True
+            break
+
+    if changed:
+        with open(filepath, 'w') as f:
+            f.write(content)
+        print('[OK] torch cpp_extension.py berhasil dipatch — g++ 13.x diizinkan')
+    else:
+        print('[WARN] Pattern tidak ditemukan, patch mungkin tidak diperlukan atau sudah terpatch')
+except Exception as e:
+    print(f'[WARN] Patch gagal: {e}')
+PYEOF
+
     MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
     cd ../Co-DETR
     MMCV_INSTALLED=true
