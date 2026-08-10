@@ -1,0 +1,5 @@
+usage: train_with_monitor.py [-h] --condition {fp16,fp32}
+                             [--max-iters MAX_ITERS] --log-dir LOG_DIR
+                             [--data-root DATA_ROOT] [--batch-size BATCH_SIZE]
+                             [--strict-fp16] [--seed SEED]
+train_with_monitor.py: error: unrecognized arguments: --config configs/co_detr_r50_fp32_baseline.py
