@@ -90,6 +90,15 @@ check("mmcv importable", check_mmcv)
 
 # ── 8. mmdet ──────────────────────────────────────────────────────────────────
 def check_mmdet():
+    import os
+    init_path = "Co-DETR/mmdet/__init__.py"
+    if os.path.exists(init_path):
+        with open(init_path, "r") as f:
+            content = f.read()
+        if "mmcv_maximum_version = '1.7.0'" in content:
+            content = content.replace("mmcv_maximum_version = '1.7.0'", "mmcv_maximum_version = '2.3.0'")
+            with open(init_path, "w") as f:
+                f.write(content)
     import mmdet
     return f"mmdet {mmdet.__version__}"
 
