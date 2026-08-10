@@ -10,6 +10,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Set pip timeout ke 1000 detik agar tidak putus di tengah jalan saat download file besar (seperti CUDNN ~650MB)
+export PIP_DEFAULT_TIMEOUT=1000
+
 log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
