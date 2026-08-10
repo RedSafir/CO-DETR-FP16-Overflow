@@ -78,6 +78,17 @@ build_from_cfg = _get('mmengine.registry', 'build_from_cfg') or (lambda cfg, reg
 BaseModule    = _get('mmengine.model',    'BaseModule')     or __import__('torch').nn.Module
 load_ckpt     = _get('mmengine.runner',   'load_checkpoint') or (lambda *a, **k: None)
 
+# Dummy hook for eval hooks
+class DummyHook:
+    def __init__(self, *args, **kwargs): pass
+
+class Scale(nn.Module):
+    def __init__(self, scale=1.0):
+        super().__init__()
+        self.scale = nn.Parameter(torch.tensor(scale, dtype=torch.float32))
+    def forward(self, x):
+        return x * self.scale
+
 def auto_fp16(*args, **kwargs):
     def deco(func): return func
     return deco
@@ -96,6 +107,8 @@ _utils_attrs = dict(
     iter_cast=lambda obj, dst_type: list(map(dst_type, obj)),
     print_log=lambda *a, **k: None,
     get_logger=lambda name: __import__('logging').getLogger(name),
+    mkdir_or_exist=lambda path, **k: os.makedirs(path, exist_ok=True),
+    digit_version=lambda x: [int(y) for y in x.split('.') if y.isdigit()],
 )
 for _k, _v in _utils_attrs.items():
     if not hasattr(mmcv.utils, _k):
@@ -115,6 +128,10 @@ _runner_attrs = dict(
     HOOKS=Registry('hook') if Registry else None,
     RUNNERS=Registry('runner') if Registry else None,
     build_runner=build_from_cfg,
+    get_dist_info=lambda: (0, 1),
+    master_only=lambda f: f,
+    DistEvalHook=DummyHook,
+    EvalHook=DummyHook,
 )
 _ensure_sub('mmcv', 'runner', _runner_attrs)
 _ensure_sub('mmcv.runner', 'base_module',  dict(BaseModule=BaseModule))
@@ -122,14 +139,23 @@ _ensure_sub('mmcv.runner', 'fp16_utils',   dict(auto_fp16=auto_fp16, force_fp32=
 _ensure_sub('mmcv.runner', 'checkpoint',   dict(load_checkpoint=load_ckpt))
 _ensure_sub('mmcv.runner', 'hooks',        dict(HOOKS=_runner_attrs.get('HOOKS')))
 _ensure_sub('mmcv.runner', 'optimizer',    dict())
-_ensure_sub('mmcv.runner', 'dist_utils',   dict(master_only=lambda f: f))
+_ensure_sub('mmcv.runner', 'dist_utils',   dict(master_only=lambda f: f, get_dist_info=lambda: (0, 1)))
 
 # ── mmcv.cnn ─────────────────────────────────────────────────────────────
 def _make_registry(name):
     return Registry(name) if Registry else None
 
-if Registry and not hasattr(mmcv.cnn, 'MODELS'):
-    mmcv.cnn.MODELS = _make_registry('model')
+_cnn_attrs = {
+    'MODELS':            _make_registry('model') if Registry and not hasattr(mmcv.cnn, 'MODELS') else getattr(mmcv.cnn, 'MODELS', None),
+    'Scale':             _get('mmcv.cnn', 'Scale') or Scale,
+    'Linear':            _get('mmcv.cnn', 'Linear') or nn.Linear,
+    'constant_init':     _get('mmcv.cnn', 'constant_init') or (lambda *a, **k: None),
+    'xavier_init':       _get('mmcv.cnn', 'xavier_init') or (lambda *a, **k: None),
+    'bias_init_with_prob': _get('mmcv.cnn', 'bias_init_with_prob') or (lambda *a, **k: 0.0),
+}
+for _k, _v in _cnn_attrs.items():
+    if _v is not None and not hasattr(mmcv.cnn, _k):
+        setattr(mmcv.cnn, _k, _v)
 
 _cnn_registries = {
     'CONV_LAYERS':       _make_registry('conv_layer'),
@@ -147,6 +173,12 @@ for _k, _v in _cnn_registries.items():
         setattr(mmcv.cnn, _k, _v)
 
 _ensure_sub('mmcv.cnn', 'bricks', _cnn_registries)
+_ensure_sub('mmcv.cnn.bricks', 'registry', dict(
+    NORM_LAYERS=_cnn_registries['NORM_LAYERS'],
+    TRANSFORMER_LAYER_SEQUENCE=_make_registry('transformer_layer_sequence'),
+))
+TransformerLayerSequence = _get('mmcv.cnn.bricks.transformer', 'TransformerLayerSequence') or BaseModule
+_ensure_sub('mmcv.cnn.bricks', 'transformer', dict(TransformerLayerSequence=TransformerLayerSequence))
 _ensure_sub('mmcv.cnn', 'utils',  dict())
 _ensure_sub('mmcv.cnn', 'resnet', dict())
 
@@ -171,6 +203,7 @@ except Exception:
 import torch
 import torch.nn as nn
 from overflow_monitor import OverflowMonitor, LoggingGradScaler
+
 
 
 
