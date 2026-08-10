@@ -71,6 +71,7 @@ python train_standalone.py \
     --log-dir "$RESULTS_DIR/conditionA_fp16" \
     --batch-size "$BATCH_SIZE" \
     --seed 42 \
+    --force-overflow \
     2>&1 | tee "$RESULTS_DIR/conditionA_fp16/training_stdout.txt"
 
 END_A=$(date +%s)

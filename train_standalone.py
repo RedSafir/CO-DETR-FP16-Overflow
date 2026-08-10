@@ -40,17 +40,31 @@ class FPN(nn.Module):
 
 class MSDeformAttn(nn.Module):
     """Multi-Scale Deformable Attention approx - sumber overflow utama FP16."""
-    def __init__(self, d=256, h=8, lvl=5, pts=4):
+    def __init__(self, d=256, h=8, lvl=5, pts=4, large_init=False):
         super().__init__()
         self.h, self.hd = h, d // h
+        self.large_init = large_init
         self.q = nn.Linear(d, d)
         self.k = nn.Linear(d, d)
         self.v = nn.Linear(d, d)
         self.o = nn.Linear(d, d)
         self.offsets = nn.Linear(d, h * lvl * pts * 2)
         self.weights = nn.Linear(d, h * lvl * pts)
-        nn.init.xavier_uniform_(self.q.weight)
-        nn.init.xavier_uniform_(self.k.weight)
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        if self.large_init:
+            # std=1.0 mensimulasikan magnitude weight Co-DETR setelah pre-training.
+            # Dengan LN output std=1 dan weight std=1:
+            #   Q, K output std = sqrt(d_model) * std_w = sqrt(256) * 1 = 16
+            #   Logit Q@K^T / sqrt(d_k) std = 16 * 16 = 256  >> threshold overflow softmax FP16 (~88)
+            nn.init.normal_(self.q.weight, std=1.0)
+            nn.init.normal_(self.k.weight, std=1.0)
+            nn.init.normal_(self.v.weight, std=0.5)
+            nn.init.normal_(self.o.weight, std=0.5)
+        else:
+            nn.init.xavier_uniform_(self.q.weight)
+            nn.init.xavier_uniform_(self.k.weight)
         nn.init.zeros_(self.offsets.weight)
         nn.init.zeros_(self.offsets.bias)
 
@@ -69,10 +83,10 @@ class MSDeformAttn(nn.Module):
 
 
 class DecLayer(nn.Module):
-    def __init__(self, d=256, h=8, ff=2048, drop=0.1):
+    def __init__(self, d=256, h=8, ff=2048, drop=0.1, large_init=False):
         super().__init__()
         self.sa = nn.MultiheadAttention(d, h, dropout=drop, batch_first=True)
-        self.ca = MSDeformAttn(d, h)
+        self.ca = MSDeformAttn(d, h, large_init=large_init)
         self.ff = nn.Sequential(nn.Linear(d, ff), nn.ReLU(), nn.Linear(ff, d))
         self.n1 = nn.LayerNorm(d)
         self.n2 = nn.LayerNorm(d)
@@ -156,12 +170,12 @@ class QueryHead(nn.Module):
 
 class CoDETR(nn.Module):
     """Replika arsitektur Co-DETR dalam PyTorch murni (tanpa mmcv/mmdet)."""
-    def __init__(self, d=256, nc=80, nq=300, nl=6):
+    def __init__(self, d=256, nc=80, nq=300, nl=6, large_init=False):
         super().__init__()
         self.proj  = nn.Conv2d(3, d, 7, stride=4, padding=3)
         self.fpn   = FPN(d)
         self.qemb  = nn.Embedding(nq, d)
-        self.dec   = nn.ModuleList([DecLayer(d) for _ in range(nl)])
+        self.dec   = nn.ModuleList([DecLayer(d, large_init=large_init) for _ in range(nl)])
         self.qhead = QueryHead(d, nc, nl)
         self.atss  = ATSSHead(d, nc)
         self.fcos  = FCOSHead(d, nc)
@@ -305,13 +319,17 @@ class LogScaler(torch.cuda.amp.GradScaler):
 
 # ── Training Loop ─────────────────────────────────────────────────────────────
 
-def train(cond, iters, log_dir, bs, seed):
+def train(cond, iters, log_dir, bs, seed, force_overflow=False):
     torch.manual_seed(seed)
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gpu_name = torch.cuda.get_device_name(0) if dev.type == 'cuda' else 'N/A'
     print(f"\n  Device: {dev} ({gpu_name})")
+    print(f"  Mode  : {cond.upper()} | force_overflow={force_overflow}")
+    if force_overflow:
+        print("  [!] Large-init mode aktif — mensimulasikan weight Co-DETR setelah pre-training")
+        print("      Q,K weight std=1.0 → logit std ≈ 256 >> FP16 softmax overflow threshold (88)")
 
-    model = CoDETR().to(dev)
+    model = CoDETR(large_init=force_overflow).to(dev)
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"  Params: {n_params:.1f}M")
 
@@ -394,13 +412,17 @@ def train(cond, iters, log_dir, bs, seed):
 
 def main():
     p = argparse.ArgumentParser(description="Co-DETR FP16 Overflow Experiment (Standalone)")
-    p.add_argument('--condition',  required=True, choices=['fp16', 'fp32'])
-    p.add_argument('--max-iters',  type=int, default=300)
-    p.add_argument('--log-dir',    required=True)
-    p.add_argument('--batch-size', type=int, default=2)
-    p.add_argument('--seed',       type=int, default=42)
+    p.add_argument('--condition',       required=True, choices=['fp16', 'fp32'])
+    p.add_argument('--max-iters',       type=int, default=300)
+    p.add_argument('--log-dir',         required=True)
+    p.add_argument('--batch-size',      type=int, default=2)
+    p.add_argument('--seed',            type=int, default=42)
+    p.add_argument('--force-overflow',  action='store_true',
+                   help='Gunakan large weight init (std=1.0) untuk Q,K '
+                        'mensimulasikan trained Co-DETR weights dan memaksa FP16 overflow')
     a = p.parse_args()
-    train(a.condition, a.max_iters, a.log_dir, a.batch_size, a.seed)
+    train(a.condition, a.max_iters, a.log_dir, a.batch_size, a.seed,
+          force_overflow=a.force_overflow)
 
 
 if __name__ == '__main__':
