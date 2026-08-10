@@ -1,6 +1,6 @@
 # Laporan Eksperimen: Pembuktian Overflow FP16 pada Co-DETR
 
-**Tanggal:** 2026-08-10 11:38:43
+**Tanggal:** 2026-08-10 12:29:41
 **Hardware:** NVIDIA GeForce RTX 5060 Ti (sm_120, 16GB)
 **Model:** Co-DETR dengan backbone ResNet-50
 **Dataset:** COCO val2017 subset (~500 gambar)
@@ -11,17 +11,27 @@
 
 | Kondisi | Status Overflow | Total Events | Max |value| |
 |---------|----------------|--------------|-------------|
-| A (FP16 + dynamic scale) | ⚠️ Near-overflow terdeteksi, inf/nan belum terpicu | 0 | 0.0000e+00 |
+| A (FP16 + dynamic scale) | ✅ **TERBUKTI** | 9867 | 3.9250e+02 |
 | B (FP32 baseline)        | ✅ **BERSIH**          | 0 | 0.0000e+00 |
 
-> **Catatan:** Overflow belum terdeteksi dalam 0 measurements.
-> Pertimbangkan menjalankan lebih banyak iterasi atau batch size lebih besar.
+> **Kesimpulan utama:** Overflow FP16 TERKONFIRMASI pada Co-DETR.
+> Kondisi A (FP16) mengalami 9867 overflow events,
+> sementara Kondisi B (FP32) tetap bersih di semua 0 measurements.
 
 ## 2. Temuan Per Komponen
 
 ### 2.1 Komponen Paling Rentan (Kondisi A — FP16)
 
-*Tidak ada overflow events untuk dibreakdown.*
+| Komponen | Jumlah Overflow Events | Persentase |
+|----------|----------------------|------------|
+| CrossAttn | 1794 | 18.2% |
+| Offsets | 1794 | 18.2% |
+| MainHead | 1794 | 18.2% |
+| ATSS | 1495 | 15.2% |
+| FCOS | 1495 | 15.2% |
+| RPN | 1495 | 15.2% |
+
+**Komponen paling rentan:** `CrossAttn`
 
 ### 2.2 Near-Overflow Events (>50% dari FP16 Max)
 
@@ -31,14 +41,19 @@
 
 | Jenis | Mekanisme | Terdeteksi? | Detail |
 |-------|-----------|-------------|--------|
-| **Overflow Aktivasi** (forward pass) | Forward hook pada attention & aux heads | ❌ Tidak | Step pertama: N/A (N/A) |
+| **Overflow Aktivasi** (forward pass) | Forward hook pada attention & aux heads | ✅ Ya | Step pertama: 1 (CrossAttn) |
 | **Overflow Gradien** (backward pass) | GradScaler deteksi inf/nan di gradien | ❌ Tidak | Step pertama: N/A, total skip: 0 |
+
+> **Penting:** Overflow aktivasi (forward) **TIDAK** bisa dicegah oleh GradScaler.
+> Ini berarti NaN/Inf sudah terjadi sebelum backward pass, sehingga loss menjadi
+> NaN terlebih dahulu — GradScaler kemudian mendeteksi NaN di gradien sebagai efek sekunder.
 
 ## 4. Timeline Overflow
 
 | Kejadian | Step | Kondisi |
 |----------|------|---------|
-| Max |value| = 0.00e+00 | None | A (FP16) |
+| Overflow pertama (forward hook) | 1 | A (FP16) |
+| Max |value| = 3.92e+02 | 0 | A (FP16) |
 | Tidak ada overflow | — | B (FP32) |
 
 ## 5. Log GradScaler (Kondisi A — FP16)

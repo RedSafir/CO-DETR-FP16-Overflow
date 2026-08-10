@@ -1,28 +1,40 @@
-Traceback (most recent call last):
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 314, in run_training
-    model, dataloader, cfg = build_mmdet_components(args, config_path)
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 99, in build_mmdet_components
-    return _build_mmdet_v2(args, config_path)
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 112, in _build_mmdet_v2
-    from mmdet.models import build_detector
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/__init__.py", line 2, in <module>
-    from .backbones import *  # noqa: F401,F403
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/backbones/__init__.py", line 2, in <module>
-    from .csp_darknet import CSPDarknet
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/backbones/csp_darknet.py", line 7, in <module>
-    from mmcv.runner import BaseModule
-ModuleNotFoundError: No module named 'mmcv.runner'
 
-============================================================
-  Co-DETR FP16 OVERFLOW EXPERIMENT
-  Kondisi : FP32
-  Max iter: 300
-  Log dir : results/conditionB_fp32
-============================================================
+  Device: cuda (NVIDIA GeForce RTX 5060 Ti)
+  Params: 21.1M
 
-[1/5] Mencari config Co-DETR...
-  [OK] Using specified config: configs/co_detr_r50_fp32_baseline.py
+  Training FP32 — 300 steps...
 
-[2/5] Build model dan dataloader...
-  mmdetection version: 2.25.3 (v2.x)
-  [ERROR] Gagal build model: No module named 'mmcv.runner'
+  step=   0/300 loss=16.1681 scale=1 elapsed=1s eta=273s
+  step=  10/300 loss=13.5035 scale=1 elapsed=6s eta=169s
+  step=  20/300 loss=5.7022 scale=1 elapsed=11s eta=154s
+  step=  30/300 loss=3.5571 scale=1 elapsed=16s eta=145s
+  step=  40/300 loss=2.9042 scale=1 elapsed=21s eta=138s
+  step=  50/300 loss=2.4140 scale=1 elapsed=26s eta=132s
+  step=  60/300 loss=2.0803 scale=1 elapsed=32s eta=126s
+  step=  70/300 loss=1.8647 scale=1 elapsed=37s eta=121s
+  step=  80/300 loss=1.7465 scale=1 elapsed=42s eta=115s
+  step=  90/300 loss=1.6657 scale=1 elapsed=47s eta=110s
+  step= 100/300 loss=1.6207 scale=1 elapsed=52s eta=104s
+  step= 110/300 loss=1.5951 scale=1 elapsed=57s eta=99s
+  step= 120/300 loss=1.5698 scale=1 elapsed=62s eta=94s
+  step= 130/300 loss=1.5547 scale=1 elapsed=68s eta=88s
+  step= 140/300 loss=1.5432 scale=1 elapsed=73s eta=83s
+  step= 150/300 loss=1.5498 scale=1 elapsed=78s eta=78s
+  step= 160/300 loss=1.5346 scale=1 elapsed=83s eta=73s
+  step= 170/300 loss=1.5278 scale=1 elapsed=88s eta=67s
+  step= 180/300 loss=1.5200 scale=1 elapsed=93s eta=62s
+  step= 190/300 loss=1.5248 scale=1 elapsed=99s eta=57s
+  step= 200/300 loss=1.5222 scale=1 elapsed=104s eta=52s
+  step= 210/300 loss=1.5281 scale=1 elapsed=109s eta=47s
+  step= 220/300 loss=1.5120 scale=1 elapsed=114s eta=41s
+  step= 230/300 loss=1.5100 scale=1 elapsed=119s eta=36s
+  step= 240/300 loss=1.5121 scale=1 elapsed=124s eta=31s
+  step= 250/300 loss=1.5109 scale=1 elapsed=129s eta=26s
+  step= 260/300 loss=1.5071 scale=1 elapsed=135s eta=21s
+  step= 270/300 loss=1.5160 scale=1 elapsed=140s eta=16s
+  step= 280/300 loss=1.5141 scale=1 elapsed=145s eta=10s
+  step= 290/300 loss=1.5161 scale=1 elapsed=150s eta=5s
+
+[Monitor] Events=9900 | Overflow=0 | Near-ovf=0
+
+  DONE FP32 — 300 steps in 154.7s
