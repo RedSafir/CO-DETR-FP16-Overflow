@@ -68,8 +68,21 @@ pip install --upgrade pip "setuptools==69.5.1" wheel -q
 log_info "=== Tahap 2: Install PyTorch untuk sm_120 ==="
 
 PYTORCH_OK=false
-if python -c "import torch; cc=torch.cuda.get_device_capability(); exit(0 if cc>=(12,0) else 1)" 2>/dev/null; then
-    log_info "PyTorch sudah ada dan mendukung sm_120."
+if python -c "
+import torch
+try:
+    # Lakukan tes matmul nyata untuk memastikan library CUDA berfungsi dan bukan binary cu124 yang tidak kompatibel
+    a = torch.randn(2, 2, device='cuda').half()
+    b = torch.randn(2, 2, device='cuda').half()
+    c = torch.matmul(a, b)
+    cc = torch.cuda.get_device_capability()
+    ok = cc >= (12, 0)
+except Exception:
+    ok = False
+import sys
+sys.exit(0 if ok else 1)
+" 2>/dev/null; then
+    log_info "PyTorch sudah terinstall dan lulus tes GPU (sm_120 OK)."
     PYTORCH_OK=true
 fi
 
