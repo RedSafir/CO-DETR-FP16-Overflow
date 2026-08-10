@@ -21,10 +21,12 @@ def load_overflow_log(path):
     with open(path) as f:
         for row in csv.DictReader(f):
             row["step"] = int(row["step"])
-            row["max_abs_value"] = float(row["max_abs_value"])
-            row["is_inf"] = row["is_inf"].lower() in ("true", "1")
-            row["is_nan"] = row["is_nan"].lower() in ("true", "1")
-            row["loss_scale"] = float(row.get("loss_scale", 1.0))
+            # Kompatibel: standalone pakai 'max_abs', versi lama pakai 'max_abs_value'
+            raw = row.get("max_abs_value") or row.get("max_abs") or "0"
+            row["max_abs_value"] = float(raw)
+            row["is_inf"] = str(row.get("is_inf", "False")).lower() in ("true", "1")
+            row["is_nan"] = str(row.get("is_nan", "False")).lower() in ("true", "1")
+            row["loss_scale"] = float(row.get("loss_scale") or row.get("scale") or 1.0)
             rows.append(row)
     return rows
 
@@ -36,9 +38,10 @@ def load_scaler_log(path):
     with open(path) as f:
         for row in csv.DictReader(f):
             row["step"] = int(row["step"])
-            row["scale_before"] = float(row["scale_before"])
-            row["scale_after"] = float(row["scale_after"])
-            row["overflow_detected"] = row["overflow_detected"].lower() in ("true", "1")
+            scale_val = float(row.get("scale") or row.get("scale_after") or 1.0)
+            row["scale_before"] = float(row.get("scale_before") or scale_val)
+            row["scale_after"]  = scale_val
+            row["overflow_detected"] = str(row.get("overflow_detected") or row.get("overflow") or "False").lower() in ("true", "1")
             rows.append(row)
     return rows
 
@@ -94,9 +97,9 @@ def analyze(rows, scaler_rows=None):
     }
 
 
-def generate_markdown(fp16_dir, fp32_dir, out_path):
+def generate_markdown(fp16_dir, fp32_dir=None, out_path=None):
     fp16_rows   = load_overflow_log(fp16_dir / "overflow_log.csv")
-    fp32_rows   = load_overflow_log(fp32_dir / "overflow_log.csv")
+    fp32_rows   = load_overflow_log(fp32_dir / "overflow_log.csv") if fp32_dir else []
     scaler_rows = load_scaler_log(fp16_dir / "gradscaler_log.csv")
 
     a = analyze(fp16_rows, scaler_rows)
@@ -306,7 +309,7 @@ def generate_markdown(fp16_dir, fp32_dir, out_path):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fp16-dir", required=True)
-    parser.add_argument("--fp32-dir", required=True)
+    parser.add_argument("--fp32-dir", default=None, help="Opsional: direktori hasil FP32")
     parser.add_argument("--output",   default="REPORT.md")
     args = parser.parse_args()
 
@@ -316,7 +319,7 @@ def main():
 
     report = generate_markdown(
         fp16_dir=Path(args.fp16_dir),
-        fp32_dir=Path(args.fp32_dir),
+        fp32_dir=Path(args.fp32_dir) if args.fp32_dir else None,
         out_path=Path(args.output),
     )
 

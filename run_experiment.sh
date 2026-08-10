@@ -89,40 +89,18 @@ print(sum(1 for row in r if str(row.get('is_inf','False'))=='True' or str(row.ge
 fi
 
 # ─────────────────────────────────────────────
-# Kondisi B — FP32
+# Analisis & Plot (FP16 only)
 # ─────────────────────────────────────────────
-log_step "4. Kondisi B: FP32 (Baseline)"
-
-mkdir -p "$RESULTS_DIR/conditionB_fp32"
-START_B=$(date +%s)
-
-python train_standalone.py \
-    --condition fp32 \
-    --max-iters "$MAX_ITERS" \
-    --log-dir "$RESULTS_DIR/conditionB_fp32" \
-    --batch-size "$BATCH_SIZE" \
-    --seed 42 \
-    2>&1 | tee "$RESULTS_DIR/conditionB_fp32/training_stdout.txt"
-
-END_B=$(date +%s)
-DURATION_B=$((END_B - START_B))
-log_info "Kondisi B selesai dalam ${DURATION_B}s"
-
-# ─────────────────────────────────────────────
-# Analisis & Plot
-# ─────────────────────────────────────────────
-log_step "5. Analisis & Visualisasi"
+log_step "5. Analisis & Visualisasi (FP16 Only)"
 
 mkdir -p "$RESULTS_DIR/plots"
 python analysis/plot_results.py \
     --fp16-dir "$RESULTS_DIR/conditionA_fp16" \
-    --fp32-dir "$RESULTS_DIR/conditionB_fp32" \
     --output-dir "$RESULTS_DIR/plots"
 
 log_step "6. Generate Laporan"
 python analysis/generate_report.py \
     --fp16-dir "$RESULTS_DIR/conditionA_fp16" \
-    --fp32-dir "$RESULTS_DIR/conditionB_fp32" \
     --output "REPORT.md"
 
 # ─────────────────────────────────────────────
@@ -133,9 +111,8 @@ echo ""
 log_info "Hasil tersimpan di:"
 log_info "  └── $RESULTS_DIR/"
 log_info "       ├── conditionA_fp16/  → overflow_log.csv, gradscaler_log.csv"
-log_info "       ├── conditionB_fp32/  → overflow_log.csv"
 log_info "       └── plots/            → *.png"
 log_info "  └── REPORT.md"
 echo ""
-log_info "Transfer ke PC Windows dengan:"
-log_info "  scp -r user@pc_training:/path/to/project/results/ ."
+log_info "Transfer ke laptop dengan:"
+log_info "  git push origin main  (lalu pull di laptop)"

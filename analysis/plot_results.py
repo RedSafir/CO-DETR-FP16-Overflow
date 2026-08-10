@@ -35,7 +35,9 @@ FP16_MAX = 65504.0
 # ─────────────────────────────────────────────
 
 def load_overflow_log(csv_path: Path) -> list:
-    """Load overflow_log.csv ke list of dicts."""
+    """Load overflow_log.csv ke list of dicts.
+    Kompatibel dengan kolom lama (max_abs_value) maupun baru (max_abs).
+    """
     if not csv_path.exists():
         print(f"  [WARN] File tidak ditemukan: {csv_path}")
         return []
@@ -44,16 +46,18 @@ def load_overflow_log(csv_path: Path) -> list:
         reader = csv.DictReader(f)
         for row in reader:
             row["step"] = int(row["step"])
-            row["max_abs_value"] = float(row["max_abs_value"])
-            row["is_inf"] = row["is_inf"].lower() in ("true", "1")
-            row["is_nan"] = row["is_nan"].lower() in ("true", "1")
-            row["loss_scale"] = float(row.get("loss_scale", 1.0))
+            # Kompatibel: standalone pakai 'max_abs', versi lama pakai 'max_abs_value'
+            raw = row.get("max_abs_value") or row.get("max_abs") or "0"
+            row["max_abs_value"] = float(raw)
+            row["is_inf"] = str(row.get("is_inf", "False")).lower() in ("true", "1")
+            row["is_nan"] = str(row.get("is_nan", "False")).lower() in ("true", "1")
+            row["loss_scale"] = float(row.get("loss_scale") or row.get("scale") or 1.0)
             rows.append(row)
     return rows
 
 
 def load_scaler_log(csv_path: Path) -> list:
-    """Load gradscaler_log.csv."""
+    """Load gradscaler_log.csv. Kompatibel dengan format lama dan baru."""
     if not csv_path.exists():
         return []
     rows = []
@@ -61,10 +65,12 @@ def load_scaler_log(csv_path: Path) -> list:
         reader = csv.DictReader(f)
         for row in reader:
             row["step"] = int(row["step"])
-            row["scale_before"] = float(row["scale_before"])
-            row["scale_after"] = float(row["scale_after"])
-            row["overflow_detected"] = row["overflow_detected"].lower() in ("true", "1")
-            row["skipped"] = row["skipped"].lower() in ("true", "1")
+            # Format baru hanya punya 'scale', format lama punya 'scale_before'/'scale_after'
+            scale_val = float(row.get("scale") or row.get("scale_after") or 1.0)
+            row["scale_before"] = float(row.get("scale_before") or scale_val)
+            row["scale_after"]  = scale_val
+            row["overflow_detected"] = str(row.get("overflow_detected") or row.get("overflow") or "False").lower() in ("true", "1")
+            row["skipped"] = str(row.get("skipped") or row.get("overflow") or "False").lower() in ("true", "1")
             rows.append(row)
     return rows
 
@@ -411,12 +417,12 @@ def fig4_combined_summary(fp16_rows, fp32_rows, scaler_rows, output_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Plot Co-DETR FP16 overflow results")
     parser.add_argument("--fp16-dir",   required=True)
-    parser.add_argument("--fp32-dir",   required=True)
+    parser.add_argument("--fp32-dir",   default=None, help="Opsional: direktori hasil FP32")
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args()
 
     fp16_dir = Path(args.fp16_dir)
-    fp32_dir = Path(args.fp32_dir)
+    fp32_dir = Path(args.fp32_dir) if args.fp32_dir else None
     out_dir  = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -426,11 +432,11 @@ def main():
 
     print("\n[1/5] Load data overflow logs...")
     fp16_rows   = load_overflow_log(fp16_dir / "overflow_log.csv")
-    fp32_rows   = load_overflow_log(fp32_dir / "overflow_log.csv")
+    fp32_rows   = load_overflow_log(fp32_dir / "overflow_log.csv") if fp32_dir else []
     scaler_rows = load_scaler_log(fp16_dir / "gradscaler_log.csv")
 
     print(f"  FP16 events : {len(fp16_rows)}")
-    print(f"  FP32 events : {len(fp32_rows)}")
+    print(f"  FP32 events : {len(fp32_rows)} {'(dilewati)' if not fp32_dir else ''}")
     print(f"  Scaler rows : {len(scaler_rows)}")
 
     setup_style()
