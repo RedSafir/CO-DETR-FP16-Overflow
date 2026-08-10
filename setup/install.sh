@@ -206,7 +206,7 @@ log_info "=== Tahap 5: Install Co-DETR Package & Dependency ==="
 
 if [ -d "Co-DETR" ]; then
     cd Co-DETR
-    pip install --no-build-isolation -e . -q || pip install -e . -q || log_warn "Install Co-DETR package warning"
+    python setup.py develop -q || pip install --no-build-isolation -e . -q || log_warn "Install Co-DETR package warning"
     cd "$PROJECT_ROOT"
 else
     log_warn "Folder Co-DETR tidak ditemukan, menginstall mmdet standar..."
