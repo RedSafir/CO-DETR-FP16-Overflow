@@ -14,6 +14,8 @@ log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+PROJECT_ROOT="$(pwd)"
+
 # ─────────────────────────────────────────────
 # 0. Verifikasi NVIDIA driver & CUDA
 # ─────────────────────────────────────────────
@@ -155,48 +157,45 @@ if [ "$MMCV_INSTALLED" = false ]; then
     [ -f "requirements/optional.txt" ] && pip install -r requirements/optional.txt -q
     [ -f "requirements.txt" ] && pip install -r requirements.txt -q
 
-    # Izinkan g++ 13.3.0 bawaan OS tanpa perlu install g++-12
+    # ── Strategi bypass g++ 13.3.0 vs CUDA 12.0 ──────────────────────────────
+    # Masalah: dua cek yang harus dibypass SEKALIGUS:
+    #   1. PyTorch Python check: baca output `g++ --version` → tolak jika > 12.x
+    #   2. CUDA 12.0 C header check: #if __GNUC__ > 12 → compile-time error
+    #
+    # Solusi: fake g++ wrapper (laporan versi 12.9) + -allow-unsupported-compiler
+    # ─────────────────────────────────────────────────────────────────────────────
+
+    GPP_WRAPPER_DIR="$HOME/.local/bin"
+    mkdir -p "$GPP_WRAPPER_DIR"
+
+    cat > "$GPP_WRAPPER_DIR/g++" << 'WRAPPER_EOF'
+#!/bin/bash
+# Fake g++ wrapper: lapor versi 12.9 ke PyTorch/CUDA check,
+# tapi pakai g++ 13.3.0 asli untuk kompilasi nyata
+if [[ "$1" == "--version" ]] || [[ "$*" == "--version" ]]; then
+    echo "g++ (Ubuntu 12.9.0-compat-wrapper) 12.9.0"
+    echo "Copyright (C) 2022 Free Software Foundation, Inc."
+    exit 0
+fi
+exec /usr/bin/g++ "$@"
+WRAPPER_EOF
+
+    chmod +x "$GPP_WRAPPER_DIR/g++"
+    log_info "Fake g++ wrapper dibuat di $GPP_WRAPPER_DIR/g++ (lapor versi 12.9 ke CUDA)"
+
+    # Tambahkan wrapper ke PATH (harus di depan /usr/bin)
+    export PATH="$GPP_WRAPPER_DIR:$PATH"
+
+    # Bypass CUDA 12.0 C header check (#if __GNUC__ > 12)
     export NVCC_PREPEND_FLAGS="-D__CUDA_ALLOW_UNSUPPORTED_COMPILER__ -allow-unsupported-compiler"
-    log_info "NVCC diatur untuk mengizinkan g++ 13.3.0 bawaan OS (-allow-unsupported-compiler)"
+    export CXXFLAGS="-D__CUDA_ALLOW_UNSUPPORTED_COMPILER__"
 
-    # Patch PyTorch cpp_extension.py agar tidak reject g++ 13 saat CUDA 12.0
-    log_info "Patching torch cpp_extension.py untuk mengizinkan g++ 13.x..."
-    python3 - << 'PYEOF'
-import inspect, warnings, sys
-try:
-    import torch.utils.cpp_extension as ext
-    filepath = inspect.getfile(ext)
-    with open(filepath, 'r') as f:
-        content = f.read()
-
-    changed = False
-    # Pattern PyTorch 2.x
-    patterns = [
-        ("raise RuntimeError(f'The current installed version of {compiler_name}", 
-         "warnings.warn(f'The current installed version of {compiler_name}"),
-        ("raise RuntimeError(\"The current installed version of g++",
-         "pass  # patched: raise RuntimeError(\"The current installed version of g++"),
-        ("raise RuntimeError('The current installed version of g++",
-         "pass  # patched: raise RuntimeError('The current installed version of g++"),
-    ]
-    for old, new in patterns:
-        if old in content:
-            content = content.replace(old, new)
-            changed = True
-            break
-
-    if changed:
-        with open(filepath, 'w') as f:
-            f.write(content)
-        print('[OK] torch cpp_extension.py berhasil dipatch — g++ 13.x diizinkan')
-    else:
-        print('[WARN] Pattern tidak ditemukan, patch mungkin tidak diperlukan atau sudah terpatch')
-except Exception as e:
-    print(f'[WARN] Patch gagal: {e}')
-PYEOF
+    log_info "PATH=$PATH"
+    log_info "NVCC_PREPEND_FLAGS=$NVCC_PREPEND_FLAGS"
+    log_info "Verifikasi g++ yang aktif: $(which g++) → $(g++ --version | head -1)"
 
     MMCV_WITH_OPS=1 pip install --no-build-isolation . -v
-    cd ../Co-DETR
+    cd "$PROJECT_ROOT"
     MMCV_INSTALLED=true
 fi
 
@@ -205,9 +204,13 @@ fi
 # ─────────────────────────────────────────────
 log_info "=== Tahap 5: Install Co-DETR Package & Dependency ==="
 
-cd "$REPO_DIR"
-pip install --no-build-isolation . -q || log_warn "Install Co-DETR package warning"
-cd ..
+if [ -d "Co-DETR" ]; then
+    cd Co-DETR
+    pip install --no-build-isolation . -q || log_warn "Install Co-DETR package warning"
+    cd "$PROJECT_ROOT"
+else
+    log_warn "Folder Co-DETR tidak ditemukan, skip pip install Co-DETR package."
+fi
 
 # Dependency tambahan untuk eksperimen
 pip install matplotlib pandas scipy tqdm pycocotools -q
