@@ -222,7 +222,7 @@ pip install matplotlib pandas scipy tqdm pycocotools -q
 # 6. Verifikasi final
 # ─────────────────────────────────────────────
 log_info "=== Tahap 6: Verifikasi Final ==="
-cd ..
+cd "$PROJECT_ROOT"
 python setup/verify_env.py
 
 log_info "============================================"
