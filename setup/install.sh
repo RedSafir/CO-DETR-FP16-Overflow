@@ -205,6 +205,8 @@ fi
 log_info "=== Tahap 5: Install Co-DETR Package & Dependency ==="
 
 if [ -d "Co-DETR" ]; then
+    # Patch mmcv_maximum_version agar mengizinkan mmcv 2.x
+    sed -i "s/mmcv_maximum_version = '1.7.0'/mmcv_maximum_version = '2.3.0'/g" Co-DETR/mmdet/__init__.py 2>/dev/null || true
     cd Co-DETR
     python setup.py develop -q || pip install --no-build-isolation -e . -q || log_warn "Install Co-DETR package warning"
     cd "$PROJECT_ROOT"
