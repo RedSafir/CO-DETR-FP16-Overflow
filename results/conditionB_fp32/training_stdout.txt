@@ -1,5 +1,22 @@
-usage: train_with_monitor.py [-h] --condition {fp16,fp32}
-                             [--max-iters MAX_ITERS] --log-dir LOG_DIR
-                             [--data-root DATA_ROOT] [--batch-size BATCH_SIZE]
-                             [--strict-fp16] [--seed SEED]
-train_with_monitor.py: error: unrecognized arguments: --config configs/co_detr_r50_fp32_baseline.py
+Traceback (most recent call last):
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 307, in run_training
+    model, dataloader, cfg = build_mmdet_components(args, config_path)
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 99, in build_mmdet_components
+    return _build_mmdet_v2(args, config_path)
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 104, in _build_mmdet_v2
+    from mmcv import Config
+ImportError: cannot import name 'Config' from 'mmcv' (/home/ictlab/miniconda3/envs/codetr_fp16_exp/lib/python3.10/site-packages/mmcv/__init__.py)
+
+============================================================
+  Co-DETR FP16 OVERFLOW EXPERIMENT
+  Kondisi : FP32
+  Max iter: 300
+  Log dir : results/conditionB_fp32
+============================================================
+
+[1/5] Mencari config Co-DETR...
+  [OK] Using specified config: configs/co_detr_r50_fp32_baseline.py
+
+[2/5] Build model dan dataloader...
+  mmdetection version: 2.25.3 (v2.x)
+  [ERROR] Gagal build model: cannot import name 'Config' from 'mmcv' (/home/ictlab/miniconda3/envs/codetr_fp16_exp/lib/python3.10/site-packages/mmcv/__init__.py)

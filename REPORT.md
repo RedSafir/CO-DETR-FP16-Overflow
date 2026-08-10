@@ -1,6 +1,6 @@
 # Laporan Eksperimen: Pembuktian Overflow FP16 pada Co-DETR
 
-**Tanggal:** 2026-08-10 11:08:37
+**Tanggal:** 2026-08-10 11:35:42
 **Hardware:** NVIDIA GeForce RTX 5060 Ti (sm_120, 16GB)
 **Model:** Co-DETR dengan backbone ResNet-50
 **Dataset:** COCO val2017 subset (~500 gambar)
