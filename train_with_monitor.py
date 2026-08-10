@@ -41,63 +41,116 @@ if CODETR_DIR.exists():
 
 sys.path.insert(0, str(ROOT / "instrumentation"))
 
-# ── MMCV 2.x Compatibility Bridge untuk Co-DETR ─────────────────────────────
-import types
-if 'mmcv.runner' not in sys.modules:
+# ═══════════════════════════════════════════════════════════════════════════
+# MMCV 1.x → 2.x / mmengine Compatibility Bridge
+# Co-DETR ditulis untuk mmcv 1.x, sedangkan kita menggunakan mmcv 2.x.
+# Bridge ini memetakan simbol yang sudah dipindahkan agar Co-DETR bisa
+# diimport tanpa modifikasi source code-nya.
+# ═══════════════════════════════════════════════════════════════════════════
+import types, mmcv, mmcv.cnn, mmcv.utils
+
+def _get(dotted, attr, default=None):
+    """Import dotted.module.attr dengan fallback default."""
     try:
-        import mmcv.runner
-    except ImportError:
-        runner_mod = types.ModuleType('mmcv.runner')
-        try:
-            import mmengine.model as mmengine_model
-            runner_mod.BaseModule = mmengine_model.BaseModule
-        except Exception:
-            import torch.nn as nn
-            runner_mod.BaseModule = nn.Module
+        mod = __import__(dotted, fromlist=[attr])
+        return getattr(mod, attr, default)
+    except Exception:
+        return default
 
-        import torch.nn as nn
-        runner_mod.Sequential = nn.Sequential
-        runner_mod.ModuleList = nn.ModuleList
+def _ensure_sub(parent_name, child_name, attrs: dict):
+    """Pastikan parent_name.child_name ada di sys.modules dengan attrs."""
+    full = f"{parent_name}.{child_name}"
+    if full not in sys.modules:
+        mod = types.ModuleType(full)
+        sys.modules[full] = mod
+    mod = sys.modules[full]
+    for k, v in attrs.items():
+        if not hasattr(mod, k):
+            setattr(mod, k, v)
+    parent = sys.modules.get(parent_name)
+    if parent and not hasattr(parent, child_name):
+        setattr(parent, child_name, mod)
+    return mod
 
-        def _dummy_decorator(*args, **kwargs):
-            def wrapper(func):
-                return func
-            return wrapper
+# ── mmengine stubs ────────────────────────────────────────────────────────
+Registry      = _get('mmengine.registry', 'Registry')      or _get('mmcv.utils', 'Registry')
+build_from_cfg = _get('mmengine.registry', 'build_from_cfg') or (lambda cfg, reg, default_scope=None: reg.build(cfg))
+BaseModule    = _get('mmengine.model',    'BaseModule')     or __import__('torch').nn.Module
+load_ckpt     = _get('mmengine.runner',   'load_checkpoint') or (lambda *a, **k: None)
 
-        runner_mod.auto_fp16 = _dummy_decorator
-        runner_mod.force_fp32 = _dummy_decorator
+def auto_fp16(*args, **kwargs):
+    def deco(func): return func
+    return deco
 
-        try:
-            from mmengine.runner import load_checkpoint
-            runner_mod.load_checkpoint = load_checkpoint
-        except Exception:
-            runner_mod.load_checkpoint = lambda *args, **kwargs: None
+def force_fp32(*args, **kwargs):
+    def deco(func): return func
+    return deco
 
-        sys.modules['mmcv.runner'] = runner_mod
-        sys.modules['mmcv.runner.base_module'] = runner_mod
-        sys.modules['mmcv.runner.fp16_utils'] = runner_mod
-        sys.modules['mmcv.runner.checkpoint'] = runner_mod
+# ── mmcv.utils ──────────────────────────────────────────────────────────
+_utils_attrs = dict(
+    Registry=Registry,
+    build_from_cfg=build_from_cfg,
+    build_runner_from_cfg=build_from_cfg,
+    import_modules_from_strings=lambda *a, **k: None,
+    is_str=lambda x: isinstance(x, str),
+    iter_cast=lambda obj, dst_type: list(map(dst_type, obj)),
+    print_log=lambda *a, **k: None,
+    get_logger=lambda name: __import__('logging').getLogger(name),
+)
+for _k, _v in _utils_attrs.items():
+    if not hasattr(mmcv.utils, _k):
+        setattr(mmcv.utils, _k, _v)
+_ensure_sub('mmcv', 'utils', _utils_attrs)
+_ensure_sub('mmcv.utils', 'registry', dict(Registry=Registry, build_from_cfg=build_from_cfg))
+_ensure_sub('mmcv.utils', 'logging', dict(print_log=_utils_attrs['print_log'], get_logger=_utils_attrs['get_logger']))
 
-import mmcv
-import mmcv.cnn
+# ── mmcv.runner ──────────────────────────────────────────────────────────
+_runner_attrs = dict(
+    BaseModule=BaseModule,
+    Sequential=__import__('torch').nn.Sequential,
+    ModuleList=__import__('torch').nn.ModuleList,
+    auto_fp16=auto_fp16,
+    force_fp32=force_fp32,
+    load_checkpoint=load_ckpt,
+    HOOKS=Registry('hook') if Registry else None,
+    RUNNERS=Registry('runner') if Registry else None,
+    build_runner=build_from_cfg,
+)
+_ensure_sub('mmcv', 'runner', _runner_attrs)
+_ensure_sub('mmcv.runner', 'base_module',  dict(BaseModule=BaseModule))
+_ensure_sub('mmcv.runner', 'fp16_utils',   dict(auto_fp16=auto_fp16, force_fp32=force_fp32))
+_ensure_sub('mmcv.runner', 'checkpoint',   dict(load_checkpoint=load_ckpt))
+_ensure_sub('mmcv.runner', 'hooks',        dict(HOOKS=_runner_attrs.get('HOOKS')))
+_ensure_sub('mmcv.runner', 'optimizer',    dict())
+_ensure_sub('mmcv.runner', 'dist_utils',   dict(master_only=lambda f: f))
+
+# ── mmcv.cnn ─────────────────────────────────────────────────────────────
+if Registry and not hasattr(mmcv.cnn, 'MODELS'):
+    mmcv.cnn.MODELS = Registry('model')
+_ensure_sub('mmcv.cnn', 'bricks', dict())
+
+# ── mmcv.parallel ────────────────────────────────────────────────────────
+_parallel_attrs = dict(
+    MMDataParallel=__import__('torch').nn.DataParallel,
+    MMDistributedDataParallel=__import__('torch').nn.parallel.DistributedDataParallel,
+    collate=__import__('torch').utils.data.dataloader.default_collate,
+    scatter=lambda inputs, target_gpus, dim=0: inputs,
+    is_module_wrapper=lambda m: False,
+)
+_ensure_sub('mmcv', 'parallel', _parallel_attrs)
+_ensure_sub('mmcv.parallel', 'data_container', dict())
+_ensure_sub('mmcv.parallel', 'distributed', _parallel_attrs)
+
+# ── mmcv.fileio ──────────────────────────────────────────────────────────
 try:
-    from mmengine.registry import MODELS, build_from_cfg
-    if not hasattr(mmcv.cnn, 'MODELS'):
-        mmcv.cnn.MODELS = MODELS
+    import mmcv.fileio
 except Exception:
-    pass
-
-try:
-    import mmcv.utils
-    from mmengine.registry import build_from_cfg
-    if not hasattr(mmcv.utils, 'build_from_cfg'):
-        mmcv.utils.build_from_cfg = build_from_cfg
-except Exception:
-    pass
+    _ensure_sub('mmcv', 'fileio', dict(load=lambda f, **k: None, dump=lambda o, f, **k: None))
 
 import torch
 import torch.nn as nn
 from overflow_monitor import OverflowMonitor, LoggingGradScaler
+
 
 
 def parse_args():
