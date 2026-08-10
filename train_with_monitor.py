@@ -125,9 +125,30 @@ _ensure_sub('mmcv.runner', 'optimizer',    dict())
 _ensure_sub('mmcv.runner', 'dist_utils',   dict(master_only=lambda f: f))
 
 # ── mmcv.cnn ─────────────────────────────────────────────────────────────
+def _make_registry(name):
+    return Registry(name) if Registry else None
+
 if Registry and not hasattr(mmcv.cnn, 'MODELS'):
-    mmcv.cnn.MODELS = Registry('model')
-_ensure_sub('mmcv.cnn', 'bricks', dict())
+    mmcv.cnn.MODELS = _make_registry('model')
+
+_cnn_registries = {
+    'CONV_LAYERS':       _make_registry('conv_layer'),
+    'NORM_LAYERS':       _make_registry('norm_layer'),
+    'ACTIVATION_LAYERS': _make_registry('activation_layer'),
+    'PLUGIN_LAYERS':     _make_registry('plugin_layer'),
+    'UPSAMPLE_LAYERS':   _make_registry('upsample_layer'),
+    'PADDING_LAYERS':    _make_registry('padding_layer'),
+    'FEEDFORWARD_NETWORK': _make_registry('feedforward_network'),
+    'ATTENTION':         _make_registry('attention'),
+    'LINEAR_LAYERS':     _make_registry('linear_layer'),
+}
+for _k, _v in _cnn_registries.items():
+    if not hasattr(mmcv.cnn, _k):
+        setattr(mmcv.cnn, _k, _v)
+
+_ensure_sub('mmcv.cnn', 'bricks', _cnn_registries)
+_ensure_sub('mmcv.cnn', 'utils',  dict())
+_ensure_sub('mmcv.cnn', 'resnet', dict())
 
 # ── mmcv.parallel ────────────────────────────────────────────────────────
 _parallel_attrs = dict(
