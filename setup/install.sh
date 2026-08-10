@@ -74,8 +74,8 @@ if python -c "import torch; cc=torch.cuda.get_device_capability(); exit(0 if cc>
 fi
 
 if [ "$PYTORCH_OK" = false ]; then
-    log_info "Menginstall PyTorch Stable cu124 (kompatibel dengan CUDA 12.8)..."
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+    log_info "Menginstall PyTorch Stable cu128 (wajib untuk Blackwell sm_120)..."
+    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 fi
 
 # Verifikasi
