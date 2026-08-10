@@ -88,7 +88,7 @@ fi
 
 if [ "$PYTORCH_OK" = false ]; then
     log_info "Menginstall PyTorch Stable cu128 (wajib untuk Blackwell sm_120)..."
-    pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+    pip install --force-reinstall torch torchvision --index-url https://download.pytorch.org/whl/cu128
 fi
 
 # Verifikasi
