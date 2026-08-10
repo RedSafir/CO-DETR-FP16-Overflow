@@ -150,33 +150,26 @@ class OverflowMonitor:
     def _register_decoder_attention_hooks(self, model: nn.Module):
         """
         Hook pada attention blocks di decoder Co-DETR.
-        Cocok untuk:
-          - nn.MultiheadAttention (standard attention)
-          - DeformableDetrDecoder
-          - MSDeformAttn (multi-scale deformable attention)
         """
         hooks_added = 0
-        for name, module in model.named_modules():
-            module_type = type(module).__name__
+        attn_keywords = ["attn", "attention", "mha", "transformer", "decoder", "encoder"]
 
-            # Standard MultiheadAttention — hook di forward
+        for name, module in model.named_modules():
+            module_type = type(module).__name__.lower()
+            name_lower = name.lower()
+
             if isinstance(module, nn.MultiheadAttention):
-                # Patch forward untuk intersep logit sebelum softmax
                 hook = self._make_mha_hook(name)
                 h = module.register_forward_hook(hook)
                 self._hooks.append(h)
                 hooks_added += 1
-
-            # Deformable attention (mmdetection style)
-            elif "MSDeformAttn" in module_type or "DeformAttn" in module_type:
-                hook = self._make_generic_hook(name, "DeformableAttn")
+            elif any(kw in module_type or kw in name_lower for kw in ["msdeformattn", "deformattn", "deformableattention", "coattention", "crossattention"]):
+                hook = self._make_generic_hook(name, "DecoderAttn")
                 h = module.register_forward_hook(hook)
                 self._hooks.append(h)
                 hooks_added += 1
-
-            # Co-DETR Co-Attention blocks
-            elif "CoAttention" in module_type or "CrossAttention" in module_type:
-                hook = self._make_generic_hook(name, "CoAttention")
+            elif any(kw in name_lower for kw in ["decoder.layers", "encoder.layers"]) and isinstance(module, (nn.Linear, nn.LayerNorm, nn.Conv2d)):
+                hook = self._make_generic_hook(name, "DecoderLayer")
                 h = module.register_forward_hook(hook)
                 self._hooks.append(h)
                 hooks_added += 1
@@ -185,33 +178,31 @@ class OverflowMonitor:
 
     def _register_aux_head_hooks(self, model: nn.Module):
         """
-        Hook pada auxiliary classification heads:
-        - ATSS head
-        - FCOS head
-        - RPN head (Faster-RCNN)
-        - ROI head
+        Hook pada auxiliary classification heads & main query head:
+        ATSS, FCOS, RPN, ROI, DINO, CoDETR heads
         """
         hooks_added = 0
-        head_keywords = [
-            ("ATSS",      "ATSSHead"),
-            ("FCOS",      "FCOSHead"),
-            ("RPN",       "RPNHead"),
-            ("ROI",       "Shared2FCBBoxHead"),
-            ("ROI",       "ConvFCBBoxHead"),
-            ("ROI",       "BBoxHead"),
-            ("CoDETR",    "CoDETRHead"),
-            ("DINO",      "DINOHead"),
-        ]
 
         for name, module in model.named_modules():
-            module_type = type(module).__name__
-            for label, kw in head_keywords:
-                if kw in module_type:
-                    hook = self._make_generic_hook(name, f"AuxHead_{label}")
-                    h = module.register_forward_hook(hook)
-                    self._hooks.append(h)
-                    hooks_added += 1
-                    break
+            module_type = type(module).__name__.lower()
+            name_lower = name.lower()
+
+            is_head = any(kw in module_type or kw in name_lower for kw in [
+                "head", "atss", "fcos", "rpn", "roi", "bbox", "cls", "reg", "codetr", "dino", "eval_head"
+            ])
+
+            if is_head and isinstance(module, (nn.Linear, nn.Conv2d, nn.Conv1d)):
+                label = "AuxHead"
+                if "atss" in name_lower or "atss" in module_type: label = "AuxHead_ATSS"
+                elif "fcos" in name_lower or "fcos" in module_type: label = "AuxHead_FCOS"
+                elif "rpn" in name_lower or "rpn" in module_type: label = "AuxHead_RPN"
+                elif "roi" in name_lower or "roi" in module_type: label = "AuxHead_ROI"
+                elif "query" in name_lower or "dino" in name_lower: label = "Main_QueryHead"
+
+                hook = self._make_generic_hook(name, label)
+                h = module.register_forward_hook(hook)
+                self._hooks.append(h)
+                hooks_added += 1
 
         print(f"[OverflowMonitor] Aux head hooks: {hooks_added}")
 
@@ -272,7 +263,7 @@ class OverflowMonitor:
         return hook
 
     def _make_generic_hook(self, layer_name: str, component_label: str):
-        """Hook generik untuk layer apapun — log output tensor."""
+        """Hook generik untuk layer apapun — log output dan input tensor."""
         monitor = self
 
         def hook(module, inputs, output):
@@ -287,16 +278,20 @@ class OverflowMonitor:
                         tensor=t
                     )
 
-            if isinstance(output, torch.Tensor):
-                check_tensor(output, "output")
-            elif isinstance(output, (tuple, list)):
-                for i, t in enumerate(output):
-                    if isinstance(t, torch.Tensor):
-                        check_tensor(t, f"output_{i}")
-                    elif isinstance(t, (tuple, list)):
-                        for j, tt in enumerate(t):
-                            if isinstance(tt, torch.Tensor):
-                                check_tensor(tt, f"output_{i}_{j}")
+            def traverse(obj, prefix):
+                if isinstance(obj, torch.Tensor):
+                    check_tensor(obj, prefix)
+                elif isinstance(obj, dict):
+                    for k, v in obj.items():
+                        traverse(v, f"{prefix}_{k}")
+                elif isinstance(obj, (tuple, list)):
+                    for i, v in enumerate(obj):
+                        traverse(v, f"{prefix}_{i}")
+
+            traverse(output, "output")
+            if inputs:
+                for i, inp in enumerate(inputs):
+                    traverse(inp, f"input_{i}")
 
         return hook
 
