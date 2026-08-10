@@ -101,7 +101,14 @@ def build_mmdet_components(args, config_path: str):
 
 def _build_mmdet_v2(args, config_path: str):
     """Build dengan mmdetection v2.x API."""
-    from mmcv import Config
+    try:
+        from mmcv import Config
+    except ImportError:
+        try:
+            from mmengine.config import Config
+        except ImportError:
+            from mmengine import Config
+
     from mmdet.models import build_detector
     from mmdet.datasets import build_dataset, build_dataloader
 
