@@ -78,6 +78,23 @@ if 'mmcv.runner' not in sys.modules:
         sys.modules['mmcv.runner.fp16_utils'] = runner_mod
         sys.modules['mmcv.runner.checkpoint'] = runner_mod
 
+import mmcv
+import mmcv.cnn
+try:
+    from mmengine.registry import MODELS, build_from_cfg
+    if not hasattr(mmcv.cnn, 'MODELS'):
+        mmcv.cnn.MODELS = MODELS
+except Exception:
+    pass
+
+try:
+    import mmcv.utils
+    from mmengine.registry import build_from_cfg
+    if not hasattr(mmcv.utils, 'build_from_cfg'):
+        mmcv.utils.build_from_cfg = build_from_cfg
+except Exception:
+    pass
+
 import torch
 import torch.nn as nn
 from overflow_monitor import OverflowMonitor, LoggingGradScaler
