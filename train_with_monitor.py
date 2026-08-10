@@ -41,6 +41,43 @@ if CODETR_DIR.exists():
 
 sys.path.insert(0, str(ROOT / "instrumentation"))
 
+# ── MMCV 2.x Compatibility Bridge untuk Co-DETR ─────────────────────────────
+import types
+if 'mmcv.runner' not in sys.modules:
+    try:
+        import mmcv.runner
+    except ImportError:
+        runner_mod = types.ModuleType('mmcv.runner')
+        try:
+            import mmengine.model as mmengine_model
+            runner_mod.BaseModule = mmengine_model.BaseModule
+        except Exception:
+            import torch.nn as nn
+            runner_mod.BaseModule = nn.Module
+
+        import torch.nn as nn
+        runner_mod.Sequential = nn.Sequential
+        runner_mod.ModuleList = nn.ModuleList
+
+        def _dummy_decorator(*args, **kwargs):
+            def wrapper(func):
+                return func
+            return wrapper
+
+        runner_mod.auto_fp16 = _dummy_decorator
+        runner_mod.force_fp32 = _dummy_decorator
+
+        try:
+            from mmengine.runner import load_checkpoint
+            runner_mod.load_checkpoint = load_checkpoint
+        except Exception:
+            runner_mod.load_checkpoint = lambda *args, **kwargs: None
+
+        sys.modules['mmcv.runner'] = runner_mod
+        sys.modules['mmcv.runner.base_module'] = runner_mod
+        sys.modules['mmcv.runner.fp16_utils'] = runner_mod
+        sys.modules['mmcv.runner.checkpoint'] = runner_mod
+
 import torch
 import torch.nn as nn
 from overflow_monitor import OverflowMonitor, LoggingGradScaler
