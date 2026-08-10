@@ -226,16 +226,19 @@ def collate(b):
 # ── Loss ───────────────────────────────────────────────────────────────────────
 
 def loss_fn(out, dev):
-    t = torch.tensor(0., device=dev, requires_grad=True)
+    # Accumulate dalam FP32 untuk stabilitas numerik loss itu sendiri,
+    # tapi FORWARD activations (yang sudah di-log monitor) tetap FP16.
+    # Ini yang terjadi di Co-DETR: forward FP16, loss dihitung FP32.
+    t = torch.tensor(0., device=dev, dtype=torch.float32, requires_grad=True)
     for c, r in zip(out['main_cls'], out['main_reg']):
-        t = t + F.binary_cross_entropy_with_logits(c, torch.zeros_like(c))
-        t = t + F.l1_loss(r, torch.rand_like(r))
+        t = t + F.binary_cross_entropy_with_logits(c.float(), torch.zeros_like(c.float()))
+        t = t + F.l1_loss(r.float(), torch.rand_like(r.float()))
     for c, r, _ in zip(out['atss_cls'], out['atss_reg'], out['atss_ctr']):
-        t = t + F.binary_cross_entropy_with_logits(c, torch.zeros_like(c))
+        t = t + F.binary_cross_entropy_with_logits(c.float(), torch.zeros_like(c.float()))
     for c, _ in zip(out['fcos_cls'], out['fcos_reg']):
-        t = t + F.binary_cross_entropy_with_logits(c, torch.zeros_like(c))
+        t = t + F.binary_cross_entropy_with_logits(c.float(), torch.zeros_like(c.float()))
     for c, _ in zip(out['rpn_cls'], out['rpn_reg']):
-        t = t + F.binary_cross_entropy_with_logits(c, torch.zeros_like(c))
+        t = t + F.binary_cross_entropy_with_logits(c.float(), torch.zeros_like(c.float()))
     return t
 
 
@@ -323,89 +326,96 @@ def train(cond, iters, log_dir, bs, seed, force_overflow=False):
     torch.manual_seed(seed)
     dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gpu_name = torch.cuda.get_device_name(0) if dev.type == 'cuda' else 'N/A'
-    print(f"\n  Device: {dev} ({gpu_name})")
-    print(f"  Mode  : {cond.upper()} | force_overflow={force_overflow}")
+    pure_fp16 = (cond == 'fp16')
+
+    print(f"\n  Device  : {dev} ({gpu_name})")
+    print(f"  Mode    : {cond.upper()} | pure_fp16={pure_fp16} | force_overflow={force_overflow}")
+    if pure_fp16:
+        print("  [FP16] Semua layer dikonversi ke float16 (model.half())")
+        print("  [FP16] Tidak ada GradScaler, tidak ada autocast, tidak ada loss scaling")
+        print("  [FP16] Overflow akan tampak sebagai inf/nan tanpa perlindungan apapun")
     if force_overflow:
-        print("  [!] Large-init mode aktif — mensimulasikan weight Co-DETR setelah pre-training")
-        print("      Q,K weight std=1.0 → logit std ≈ 256 >> FP16 softmax overflow threshold (88)")
+        print("  [!] Large-init mode: Q,K weight std=1.0 → logit std ≈ 256 >> threshold FP16 (~88)")
 
     model = CoDETR(large_init=force_overflow).to(dev)
+    if pure_fp16:
+        model = model.half()   # ← konversi SEMUA weight ke FP16
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
-    print(f"  Params: {n_params:.1f}M")
+    dtype_str = next(model.parameters()).dtype
+    print(f"  Params  : {n_params:.1f}M | dtype={dtype_str}")
 
     loader = DataLoader(
         RandDet(max(600, iters * bs)), bs, shuffle=True,
         num_workers=2, collate_fn=collate, pin_memory=True,
     )
+    # Pure FP16: optimizer pada parameter FP16 langsung (tanpa master copy FP32)
     opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
     mon = Monitor(log_dir)
-
-    scaler = None
-    if cond == 'fp16':
-        scaler = LogScaler(
-            str(Path(log_dir) / 'gradscaler_log.csv'),
-            init_scale=2**16, growth_factor=2.0,
-            backoff_factor=0.5, growth_interval=2000,
-        )
+    # Tidak ada GradScaler untuk pure FP16
 
     tlog = []
     step = 0
     t0 = time.time()
-    print(f"\n  Training {cond.upper()} — {iters} steps...\n")
+    print(f"\n  Training {cond.upper()} (pure_fp16={pure_fp16}) — {iters} steps...\n")
     model.train()
+    n_overflow_steps = 0
 
     try:
         while step < iters:
             for batch in loader:
                 if step >= iters:
                     break
+
                 imgs = batch[0].to(dev, non_blocking=True)
+                if pure_fp16:
+                    imgs = imgs.half()   # ← input juga FP16
+
                 opt.zero_grad(set_to_none=True)
 
-                if cond == 'fp16':
-                    with torch.cuda.amp.autocast(dtype=torch.float16):
-                        out = model(imgs)
-                        loss = loss_fn(out, dev)
-                else:
-                    out = model(imgs)
-                    loss = loss_fn(out, dev)
+                # ── Forward — PURE FP16, tanpa autocast, tanpa scaler ──────────
+                out  = model(imgs)
+                loss = loss_fn(out, dev)
 
                 lv = loss.item()
-                sc = scaler.get_scale() if scaler else 1.0
-                mon.log_outputs(step, out, sc)
+                mon.log_outputs(step, out, 1.0)  # scale=1.0 (tidak ada scaling)
 
-                if not (math.isnan(lv) or math.isinf(lv)):
-                    if scaler:
-                        scaler.scale(loss).backward()
-                        scaler.step(opt)
-                        scaler.update()
-                        scaler._step = step
-                    else:
-                        loss.backward()
-                        opt.step()
+                # Deteksi overflow manual
+                loss_overflowed = math.isnan(lv) or math.isinf(lv)
+                if loss_overflowed:
+                    n_overflow_steps += 1
+                    print(f"  [OVERFLOW] step={step} loss={lv} — backward dilewati")
 
-                tlog.append({'step': step, 'loss': lv, 'scale': sc,
-                             'time': time.time() - t0})
+                # ── Backward — tidak ada scaler ────────────────────────────────
+                if not loss_overflowed:
+                    loss.backward()
+                    # Clip gradients untuk mencegah crash total (opsional)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10.0)
+                    opt.step()
+
+                tlog.append({'step': step, 'loss': lv, 'scale': 1.0,
+                             'overflow': loss_overflowed, 'time': time.time() - t0})
 
                 if step % 10 == 0:
-                    el = time.time() - t0
+                    el  = time.time() - t0
                     eta = el / max(step, 1) * (iters - step)
-                    print(f"  step={step:4d}/{iters} loss={lv:.4f} "
-                          f"scale={sc:.0f} elapsed={el:.0f}s eta={eta:.0f}s")
+                    print(f"  step={step:4d}/{iters} loss={lv:.6f} "
+                          f"elapsed={el:.0f}s eta={eta:.0f}s "
+                          f"[overflow_steps={n_overflow_steps}]")
                 step += 1
 
     except KeyboardInterrupt:
         print("\n[WARN] Interrupted by user.")
 
     with open(Path(log_dir) / 'training_log.csv', 'w', newline='') as f:
-        w = csv.DictWriter(f, ['step', 'loss', 'scale', 'time'])
+        w = csv.DictWriter(f, ['step', 'loss', 'scale', 'overflow', 'time'])
         w.writeheader()
         w.writerows(tlog)
 
     mon.close()
-    if scaler:
-        scaler.close()
-    print(f"\n  DONE {cond.upper()} — {step} steps in {time.time()-t0:.1f}s")
+    elapsed = time.time() - t0
+    print(f"\n  DONE {cond.upper()} (pure_fp16={pure_fp16}) — {step} steps in {elapsed:.1f}s")
+    print(f"  Overflow steps (loss=inf/nan): {n_overflow_steps}/{step} "
+          f"({100*n_overflow_steps/max(step,1):.1f}%)")
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
