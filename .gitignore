@@ -27,11 +27,14 @@ venv/
 ENV/
 
 # Data & Results
-data/
+data/coco_subset/
 results/
 Co-DETR/
+mmcv_src/
 _tmp/
 *.log
+*.run
+*.deb
 
 # IDE
 .vscode/
