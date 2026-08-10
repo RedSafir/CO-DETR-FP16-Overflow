@@ -1,11 +1,17 @@
 Traceback (most recent call last):
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 307, in run_training
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 314, in run_training
     model, dataloader, cfg = build_mmdet_components(args, config_path)
   File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 99, in build_mmdet_components
     return _build_mmdet_v2(args, config_path)
-  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 104, in _build_mmdet_v2
-    from mmcv import Config
-ImportError: cannot import name 'Config' from 'mmcv' (/home/ictlab/miniconda3/envs/codetr_fp16_exp/lib/python3.10/site-packages/mmcv/__init__.py)
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/train_with_monitor.py", line 112, in _build_mmdet_v2
+    from mmdet.models import build_detector
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/__init__.py", line 2, in <module>
+    from .backbones import *  # noqa: F401,F403
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/backbones/__init__.py", line 2, in <module>
+    from .csp_darknet import CSPDarknet
+  File "/home/ictlab/Documents/penelitian_miftah/CO-DETR-FP16-Overflow/Co-DETR/mmdet/models/backbones/csp_darknet.py", line 7, in <module>
+    from mmcv.runner import BaseModule
+ModuleNotFoundError: No module named 'mmcv.runner'
 
 ============================================================
   Co-DETR FP16 OVERFLOW EXPERIMENT
@@ -19,4 +25,4 @@ ImportError: cannot import name 'Config' from 'mmcv' (/home/ictlab/miniconda3/en
 
 [2/5] Build model dan dataloader...
   mmdetection version: 2.25.3 (v2.x)
-  [ERROR] Gagal build model: cannot import name 'Config' from 'mmcv' (/home/ictlab/miniconda3/envs/codetr_fp16_exp/lib/python3.10/site-packages/mmcv/__init__.py)
+  [ERROR] Gagal build model: No module named 'mmcv.runner'
