@@ -48,6 +48,7 @@ from overflow_monitor import OverflowMonitor, LoggingGradScaler
 
 def parse_args():
     p = argparse.ArgumentParser()
+    p.add_argument("--config",      default=None, help="Path ke config mmdetection")
     p.add_argument("--condition",   required=True, choices=["fp16", "fp32"])
     p.add_argument("--max-iters",   type=int,   default=300)
     p.add_argument("--log-dir",     required=True)
@@ -59,9 +60,14 @@ def parse_args():
     return p.parse_args()
 
 
-def find_codetr_config() -> str:
+def find_codetr_config(given_config: str = None) -> str:
     """Cari config Co-DETR yang tersedia di repo."""
+    if given_config and Path(given_config).exists():
+        print(f"  [OK] Using specified config: {given_config}")
+        return given_config
+
     candidates = [
+        "configs/co_detr_r50_fp16_experiment.py",
         "Co-DETR/projects/configs/co_dino/co_dino_5scale_r50_1x_coco.py",
         "Co-DETR/projects/configs/co_dino/co_dino_5scale_r50_lsj_1x_coco.py",
         "Co-DETR/configs/co_detr/co_detr_r50_fpn_1x_coco.py",
@@ -73,7 +79,6 @@ def find_codetr_config() -> str:
             return cfg
     raise FileNotFoundError(
         "Tidak ada config Co-DETR yang ditemukan!\n"
-        "Pastikan repo sudah di-clone: git clone https://github.com/Sense-X/Co-DETR\n"
         f"Dicari di: {candidates}"
     )
 
@@ -294,7 +299,7 @@ def run_training(args):
 
     # ── 1. Find config ────────────────────────────────────────────────────
     print("\n[1/5] Mencari config Co-DETR...")
-    config_path = find_codetr_config()
+    config_path = find_codetr_config(args.config)
 
     # ── 2. Build model & dataloader ───────────────────────────────────────
     print("\n[2/5] Build model dan dataloader...")
